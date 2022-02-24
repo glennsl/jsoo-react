@@ -13,8 +13,6 @@
 
 (generate_opam_files true)
 
-(implicit_transitive_deps false)
-
 (package
  (name jsoo-react)
  (synopsis "Bindings to ReactJS for js_of_ocaml, including JSX ppx")
