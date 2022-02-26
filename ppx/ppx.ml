@@ -88,10 +88,9 @@ let extractChildren ?(removeLastPositionUnit = false) ~loc propsAndChildren =
         []
     | [(Nolabel, {pexp_desc= Pexp_construct ({txt= Lident "()"}, None)})] ->
         acc
-    | (Nolabel, _) :: _rest ->
-        raise
-          (Invalid_argument
-             "JSX: found non-labelled argument before the last position" )
+    | (Nolabel, {pexp_loc}) :: _rest ->
+        Location.raise_errorf ~loc:pexp_loc
+          "JSX: found non-labelled argument before the last position"
     | arg :: rest ->
         allButLast_ rest (arg :: acc)
   in
@@ -107,9 +106,9 @@ let extractChildren ?(removeLastPositionUnit = false) ~loc propsAndChildren =
       , if removeLastPositionUnit then allButLast props else props )
   | [(_, childrenExpr)], props ->
       (childrenExpr, if removeLastPositionUnit then allButLast props else props)
-  | _ ->
-      raise
-        (Invalid_argument "JSX: somehow there's more than one `children` label")
+  | _first :: (_, {pexp_loc}) :: _rest, _props ->
+      Location.raise_errorf ~loc:pexp_loc
+        "JSX: somehow there's more than one `children` label"
 
 let unerasableIgnore loc =
   { attr_name= {txt= "warning"; loc}
@@ -143,23 +142,24 @@ let filter_attr_name key attr =
   if attr.attr_name.txt = key then (register_loc attr ; true) else false
 
 (* Finds the name of the variable the binding is assigned to, otherwise raises Invalid_argument *)
-let getFnName binding =
-  match binding with
-  | {pvb_pat= {ppat_desc= Ppat_var {txt}}} ->
+let rec getFnName = function
+  | {ppat_desc= Ppat_var {txt}} ->
       txt
-  | _ ->
-      raise (Invalid_argument "react.component calls cannot be destructured.")
+  | {ppat_desc= Ppat_constraint (pat, _)} ->
+      getFnName pat
+  | {ppat_loc} ->
+      Location.raise_errorf ~loc:ppat_loc
+        "react.component calls cannot be destructured."
 
 (* Lookup the value of `props` otherwise raise Invalid_argument error *)
 let getPropsNameValue _acc (loc, exp) =
   match (loc, exp) with
   | {txt= Lident "props"}, {pexp_desc= Pexp_ident {txt= Lident str}} ->
       {propsName= str}
-  | {txt}, _ ->
-      raise
-        (Invalid_argument
-           ( "react.component only accepts props as an option, given: "
-           ^ Longident.last_exn txt ) )
+  | {txt; loc}, _ ->
+      Location.raise_errorf ~loc
+        "react.component only accepts props as an option, given: %s"
+        (Longident.last_exn txt)
 
 (* Lookup the `props` record or string as part of [@react.component] and store the name for use when rewriting *)
 let get_props_attr payload =
@@ -177,11 +177,9 @@ let get_props_attr payload =
              Pstr_eval ({pexp_desc= Pexp_ident {txt= Lident "props"}}, _) }
         :: _rest ) ) ->
       {propsName= "props"}
-  | Some (PStr ({pstr_desc= Pstr_eval (_, _)} :: _rest)) ->
-      raise
-        (Invalid_argument
-           "react.component accepts a record config with props as an options."
-        )
+  | Some (PStr ({pstr_desc= Pstr_eval (_, _); pstr_loc} :: _rest)) ->
+      Location.raise_errorf ~loc:pstr_loc
+        "react.component accepts a record config with props as an options."
   | _ ->
       default_props
 
@@ -686,7 +684,7 @@ let process_value_binding ~pstr_loc ~inside_component ~mapper binding =
   if has_attr_on_binding binding || inside_component then
     let binding_loc = binding.pvb_loc in
     let binding_pat_loc = binding.pvb_pat.ppat_loc in
-    let fn_name = getFnName binding in
+    let fn_name = getFnName binding.pvb_pat in
     let modified_binding_old binding =
       let expression = binding.pvb_expr in
       (* TODO: there is a long-tail of unsupported features inside of blocks - Pexp_letmodule , Pexp_letexception , Pexp_ifthenelse *)
@@ -709,6 +707,10 @@ let process_value_binding ~pstr_loc ~inside_component ~mapper binding =
                     ; (Nolabel, {pexp_desc= Pexp_fun _}) ] ) ) } ->
             spelunk_for_fun_expr inner_fun_expr
         | {pexp_desc= Pexp_sequence (_wrapper_expr, inner_fun_expr)} ->
+            spelunk_for_fun_expr inner_fun_expr
+        | {pexp_desc= Pexp_newtype (_label, inner_fun_expr)} ->
+            spelunk_for_fun_expr inner_fun_expr
+        | {pexp_desc= Pexp_constraint (inner_fun_expr, _typ)} ->
             spelunk_for_fun_expr inner_fun_expr
         | _ ->
             raise
