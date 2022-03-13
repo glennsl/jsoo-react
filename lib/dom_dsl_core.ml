@@ -14,7 +14,11 @@ module Prop = struct
   let event key (f : _ Event.synthetic -> unit) =
     any key (Js_of_ocaml.Js.wrap_callback f)
 
-  let maybe prop = function Some value -> prop value | None -> any "" ""
+  let maybe prop = function
+    | Some value ->
+        prop value
+    | None ->
+        any "" Js_of_ocaml.Js.undefined
 
   let key = string "key"
 
