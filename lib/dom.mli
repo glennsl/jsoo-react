@@ -48,6 +48,15 @@ val render_to_element_with_id : Core.element -> string -> unit
       | Some element ->
           render react_element element]
 
+val create_portal : Core.element -> dom_element -> Core.element
+  [@@js.custom
+    val create_portal_internal :
+      Imports.react_dom -> Core.element -> dom_element -> Core.element
+      [@@js.call "createPortal"]
+
+    let create_portal element dom_element =
+      create_portal_internal Imports.react_dom element dom_element]
+
 type dom_ref = private Ojs.t
 
 module Ref : sig
