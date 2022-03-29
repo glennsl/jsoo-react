@@ -25,7 +25,7 @@
 
   (js_of_ocaml (and (>= 4.0.0) (<= 5.0.0)))
   (gen_js_api (and (>= 1.0.8) (< 1.1.0)))
-  (ppxlib (>= 0.23.0))
+  (ppxlib (and (>= 0.23.0) (< 0.26.0)))
 
   ;; Test dependencies
   (webtest :with-test)
